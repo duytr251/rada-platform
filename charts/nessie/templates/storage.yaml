@@ -1,0 +1,21 @@
+{{- if or (eq .Values.versionStoreType "ROCKS") (eq .Values.versionStoreType "ROCKSDB") }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nessie.fullname" . }}
+  labels:
+    {{- include "nessie.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  storageClassName: {{ .Values.rocksdb.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.rocksdb.storageSize }}
+{{- if .Values.rocksdb.selectorLabels }}
+  selector:
+    matchLabels:
+      {{- toYaml .Values.rocksdb.selectorLabels | nindent 6 }}
+{{- end }}
+{{- end }}

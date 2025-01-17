@@ -1,0 +1,12 @@
+dependencies:
+- name: nessie
+  repository: https://charts.projectnessie.org
+  version: 0.92.1
+- name: trino
+  repository: https://trinodb.github.io/charts
+  version: 0.25.0
+- name: airflow
+  repository: https://airflow-helm.github.io/charts
+  version: 8.9.0
+digest: sha256:f4582e7da7bb9a8ce5b96211d5fcd5e681b14f2b22e372e886b777e6277f8b25
+generated: "2025-01-16T14:49:13.1368682+07:00"

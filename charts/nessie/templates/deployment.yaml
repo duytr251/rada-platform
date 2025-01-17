@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nessie.fullname" . }}
+  labels:
+    {{- include "nessie.labels" . | nindent 4 }}
+    {{- if .Values.podLabels }}
+    {{- toYaml .Values.podLabels | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "nessie.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        projectnessie.org/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "nessie.selectorLabels" . | nindent 8 }}
+        {{- if .Values.podLabels }}
+        {{- toYaml .Values.podLabels | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "nessie.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.Version }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            - name: nessie-config
+              mountPath: /deployments/config/application.properties
+              subPath: application.properties
+          {{- if or (eq .Values.versionStoreType "ROCKSDB") (eq .Values.versionStoreType "ROCKS") }}
+            - name: rocks-storage
+              mountPath: /rocks-nessie
+          {{- end }}
+          {{- if and (eq .Values.versionStoreType "BIGTABLE") (.Values.bigtable.secret) }}
+            - name: bigtable-creds
+              mountPath: /bigtable-nessie
+          {{- end }}
+          env:
+            {{- if or (eq .Values.versionStoreType "DYNAMODB") (eq .Values.versionStoreType "DYNAMO") -}}
+            {{- include "nessie.secretToEnv" (list .Values.dynamodb.secret "awsAccessKeyId" "AWS_ACCESS_KEY_ID" ) | trim | nindent 12 -}}
+            {{- include "nessie.secretToEnv" (list .Values.dynamodb.secret "awsSecretAccessKey" "AWS_SECRET_ACCESS_KEY" ) | trim | nindent 12 -}}
+            {{- end -}}
+            {{- if or (eq .Values.versionStoreType "MONGODB") (eq .Values.versionStoreType "MONGO") }}
+            {{- include "nessie.secretToEnv" (list .Values.mongodb.secret "username" "quarkus.mongodb.credentials.username" ) | trim | nindent 12 -}}
+            {{- include "nessie.secretToEnv" (list .Values.mongodb.secret "password" "quarkus.mongodb.credentials.password" ) | trim | nindent 12 -}}
+            {{- end -}}
+            {{- if eq .Values.versionStoreType "CASSANDRA" }}
+            {{- include "nessie.secretToEnv" (list .Values.cassandra.secret "username" "quarkus.cassandra.auth.username" ) | trim | nindent 12 -}}
+            {{- include "nessie.secretToEnv" (list .Values.cassandra.secret "password" "quarkus.cassandra.auth.password" ) | trim | nindent 12 -}}
+            {{- end -}}
+            {{- if or (eq .Values.versionStoreType "JDBC") (eq .Values.versionStoreType "TRANSACTIONAL") }}
+            {{- $oldConfig := .Values.postgres | default dict }}
+            {{- $newConfig := .Values.jdbc | default dict }}
+            {{- $jdbcUrl := coalesce $oldConfig.jdbcUrl $newConfig.jdbcUrl }}
+            {{- $secret := coalesce $oldConfig.secret $newConfig.secret }}
+            {{- $dbKind := include "nessie.dbKind" $jdbcUrl }}
+            {{- include "nessie.secretToEnv" (list $secret "username" (printf "quarkus.datasource.%s.username" $dbKind)) | trim | nindent 12 }}
+            {{- include "nessie.secretToEnv" (list $secret "password" (printf "quarkus.datasource.%s.password" $dbKind)) | trim | nindent 12 }}
+            {{- end -}}
+            {{- if eq .Values.versionStoreType "BIGTABLE" }}
+            {{- if .Values.bigtable.secret }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /bigtable-nessie/sa_credentials.json
+            {{- end }}
+            {{- end -}}
+            {{- if .Values.authentication.enabled -}}
+            {{- include "nessie.secretToEnv" (list .Values.authentication.oidcClientSecret "key" "quarkus.oidc.credentials.secret" ) | trim | nindent 12 -}}
+            {{- end -}}
+            {{- if .Values.catalog.enabled -}}
+            {{- include "nessie.catalogStorageEnv" .Values.catalog.storage | trim | nindent 12 -}}
+            {{- end -}}
+            {{- if .Values.extraEnv }}
+            {{- toYaml .Values.extraEnv | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: nessie-server
+              containerPort: 19120
+              protocol: TCP
+            - name: nessie-mgmt
+              containerPort: 9000
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /q/health/live
+              port: 9000
+              scheme: HTTP
+            initialDelaySeconds: 2
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 10
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /q/health/ready
+              port: 9000
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 45
+            successThreshold: 1
+            timeoutSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: nessie-config
+          configMap:
+            name: {{ include "nessie.fullname" . }}
+      {{- if or (eq .Values.versionStoreType "ROCKSDB") (eq .Values.versionStoreType "ROCKS") }}
+        - name: rocks-storage
+          persistentVolumeClaim:
+            claimName: {{ include "nessie.fullname" . }}
+      {{- end }}
+      {{- if and (eq .Values.versionStoreType "BIGTABLE") (.Values.bigtable.secret) }}
+        - name: bigtable-creds
+          secret:
+            secretName: {{ .Values.bigtable.secret.name }}
+            items:
+              - key: {{ .Values.bigtable.secret.key }}
+                path: sa_credentials.json
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

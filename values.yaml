@@ -1,0 +1,1133 @@
+nessie:
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/projectnessie/nessie
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  logLevel: INFO
+
+  versionStoreType: JDBC
+
+
+  jdbc:
+    jdbcUrl: jdbc:postgresql://rada-platform-postgresql:5432/nessie
+    secret:
+      name: rada-platform-postgresql-secret
+      username: username
+      password: password
+
+
+  catalog:
+
+    enabled: True
+
+    iceberg:
+
+      defaultWarehouse: warehouse
+
+      configDefaults:
+        io-impl: org.apache.iceberg.hadoop.HadoopFileIO
+
+      configOverrides:
+        s3.acl: public-read-write
+
+      warehouses:
+      - name: warehouse
+        location: s3://landingzone/sh-warehouse
+        configDefaults: {}
+        configOverrides: {}
+      objectStoresHealthCheckEnabled: true
+
+    storage:
+      retryAfter: ~
+
+      s3:
+
+        defaultOptions:
+          region: us-west-1
+          endpoint: http://ha-minio-hl.ha-minio.svc.cluster.local:9000
+          externalEndpoint: http://ha-minio-hl.ha-minio.svc.cluster.local:9000
+          pathStyleAccess: true
+          accessPoint: ~
+          allowCrossRegionAccessPoint: false
+          serverAuthenticationMode: STATIC
+          clientAuthenticationMode: ~  # REQUEST_SIGNING
+
+          assumeRole:
+            stsEndpoint: ~  # "https://sts.amazonaws.com"
+            roleArn: ~  # "arn:aws:iam::123456789012:role/role-name"
+            sessionIamPolicy: ~  # "{ \"Version\": \"2012-10-17\", \"Statement\": [ { \"Effect\": \"Allow\", \"Action\": \"s3:*\", \"Resource\": \"*\" } ] }"
+            roleSessionName: ~  # nessie
+            externalId: ~
+            clientSessionDuration: ~
+
+          accessKeySecret:
+            name: awscreds
+            awsAccessKeyId: awsAccessKeyId
+            awsSecretAccessKey: awsSecretAccessKey
+
+
+  authentication:
+    enabled: false
+    oidcAuthServerUrl: http://127.255.0.0:0/auth/realms/unset/
+    oidcClientId: nessie
+    oidcClientSecret: {}
+
+  authorization:
+    enabled: false
+    rules:
+      {}
+
+  tracing:
+    enabled: false
+    endpoint: "http://otlp-collector:4317"
+    sample: "1.0d"
+    attributes:
+      {}
+
+  metrics:
+    enabled: true
+    tags:
+      {}
+
+  serviceMonitor:
+    enabled: true
+    interval: ""
+    labels:
+      {}
+
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  service:
+    type: NodePort
+    port: 19120
+    sessionAffinity: None
+    annotations: {}
+
+  ingress:
+    className: ""
+    enabled: false
+    annotations: {
+    }
+    hosts:
+      - host: chart-example.local
+        paths: []
+    tls: []
+
+  resources:
+    {}
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage:
+
+
+
+trino:
+
+  nameOverride:
+  coordinatorNameOverride:
+  workerNameOverride:
+
+  image:
+    registry: ""
+    repository: trinodb/trino
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  imagePullSecrets:
+    - name: registry-credentials
+
+  server:
+    workers: 2
+    node:
+      environment: production
+      dataDir: /data/trino
+      pluginDir: /usr/lib/trino/plugin
+    log:
+      trino:
+        level: INFO
+    config:
+      path: /etc/trino
+      http:
+        port: 8080
+      https:
+        enabled: false
+        port: 8443
+        keystore:
+          path: ""
+      authenticationType: ""
+      query:
+        maxMemory: "1GB"
+    exchangeManager:
+      name: "filesystem"
+      baseDir: "/tmp/trino-local-file-system-exchange-manager"
+    workerExtraConfig: "internal-communication.shared-secret=MQ==" #sh customeized
+    coordinatorExtraConfig: "internal-communication.shared-secret=MQ==" #sh customeized
+    autoscaling:
+      enabled: false
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 50
+      behavior: {}
+
+
+  additionalCatalogs:
+
+    dp_warehouse: |-
+      connector.name=iceberg
+      iceberg.catalog.type=rest
+      iceberg.rest-catalog.uri=http://rada-platform-nessie.dt-rada.svc.cluster.local:19120/iceberg
+      iceberg.rest-catalog.warehouse=s3://landingzone/sh-warehouse
+      hive.s3.endpoint=minio.ha-minio.svc.cluster.local
+      hive.s3.path-style-access=true
+      hive.s3.ssl.enabled=false
+      hive.s3.max-connections=99999
+      hive.s3.aws-access-key=rafflesit
+      hive.s3.aws-secret-key=rafflesit
+      iceberg.register-table-procedure.enabled=true
+      iceberg.target-max-file-size=500MB
+  
+
+    jmx: |-
+      connector.name=memory
+    memory: |-
+      connector.name=memory
+      memory.max-data-per-node=128MB
+
+
+
+  env:
+  - name: AWS_ACCESS_KEY_ID
+    value: "rafflesit"
+  - name: AWS_SECRET_ACCESS_KEY
+    value: "rafflesit"
+
+
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  shareProcessNamespace:
+    coordinator: false
+    worker: false
+
+  service:
+    annotations: {}
+    type: NodePort
+    port: 8080
+
+  auth: {}
+
+  serviceAccount:
+    create: false
+    name: ""
+    annotations: {}
+
+  coordinator:
+    jvm:
+      maxHeapSize: "16G"
+      gcMethod:
+        type: "UseG1GC"
+        g1:
+          heapRegionSize: "32M"
+
+    config:
+      memory:
+        heapHeadroomPerNode: ""
+      query:
+        maxMemoryPerNode: "8GB"
+
+    additionalJVMConfig:
+    - -server
+    - -Xmx16G
+    - -XX:InitialRAMPercentage=80
+    - -XX:MaxRAMPercentage=80
+    - -XX:G1HeapRegionSize=32M
+    - -XX:+ExplicitGCInvokesConcurrent
+    - -XX:+ExitOnOutOfMemoryError
+    - -XX:+HeapDumpOnOutOfMemoryError
+    - -XX:-OmitStackTraceInFastThrow
+    - -XX:ReservedCodeCacheSize=512M
+    - -XX:PerMethodRecompilationCutoff=10000
+    - -XX:PerBytecodeRecompilationCutoff=10000
+    - -Djdk.attach.allowAttachSelf=true
+    - -Djdk.nio.maxCachedBufferSize=2000000
+    - -Dfile.encoding=UTF-8
+    - -XX:+EnableDynamicAgentLoading
+    - -XX:+UnlockDiagnosticVMOptions
+
+    resources: 
+      limits:
+        cpu: 2
+        memory: 8Gi
+      requests:
+        cpu: 1
+        memory: 8Gi
+
+
+  worker:
+    jvm:
+      maxHeapSize: "8G"
+      gcMethod:
+        type: "UseG1GC"
+        g1:
+          heapRegionSize: "32M"
+
+    config:
+      memory:
+        heapHeadroomPerNode: ""
+      query:
+        maxMemoryPerNode: "4GB"
+
+    additionalJVMConfig: []
+
+    additionalExposedPorts: {}
+
+    resources:
+      limits:
+        cpu: 4
+        memory: 8Gi
+      requests:
+        cpu: 2
+        memory: 8Gi
+
+  kafka:
+    mountPath: "/etc/trino/schemas"
+    tableDescriptions: {}
+
+  jmx:
+    enabled: false
+    registryPort: 9080
+    serverPort: 9081
+    exporter:
+      enabled: false
+      image: bitnami/jmx-exporter:latest
+      pullPolicy: Always
+      port: 5556
+      configProperties: []
+
+  serviceMonitor:
+    enabled: false
+    labels:
+      prometheus: kube-prometheus
+    interval: "30s"
+
+  commonLabels: {}
+
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+
+
+
+
+airflow:
+  airflow:
+    legacyCommands: false
+
+    image:
+      repository: apache/airflow
+      tag: 2.10.2-python3.9
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+      uid: 50000
+      gid: 0
+
+    executor: CeleryExecutor
+
+    fernetKey: "7T512UXSSmBOkpWimFHIVb8jK6lfmSAvx4mO6Arehnc="
+
+    webserverSecretKey: "THIS IS UNSAFE!"
+
+    config: {}
+
+    users:
+      - username: admin
+        password: admin
+        role: Admin
+        email: admin@example.com
+        firstName: admin
+        lastName: admin
+
+    usersTemplates: {}
+
+    usersUpdate: true
+
+    connections: []
+
+    connectionsTemplates: {}
+
+    connectionsUpdate: true
+
+    variables: []
+
+    variablesTemplates: {}
+
+    variablesUpdate: true
+
+    pools: []
+
+    poolsUpdate: true
+
+
+    protectedPipPackages:
+      - "apache-airflow"
+
+
+    clusterDomain: "cluster.local"
+
+    initContainers:
+      checkDb:
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+
+      waitForDbMigrations:
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+
+      installPipPackages:
+        resources: 
+          requests:
+            memory: "0.5Gi"
+            cpu: "0.5"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+
+    localSettings:
+      stringOverride: ""
+
+      existingSecret: ""
+
+    kubernetesPodTemplate:
+      stringOverride: ""
+
+
+    dbMigrations:
+      enabled: true
+
+      runAsJob: false
+
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+      safeToEvict: true
+
+      checkInterval: 300
+
+    sync:
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+
+      safeToEvict: true
+
+  scheduler:
+    replicas: 1
+
+    resources: 
+      requests:
+        memory: "2Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+
+    nodeSelector: {}
+
+    affinity: {}
+
+    tolerations: []
+
+    topologySpreadConstraints: []
+
+    securityContext: {}
+
+    labels: {}
+
+    podLabels: {}
+
+    annotations: {}
+
+    podAnnotations: {}
+
+    safeToEvict: true
+
+    podDisruptionBudget:
+      enabled: false
+
+      apiVersion: policy/v1
+
+      maxUnavailable: ""
+
+      minAvailable: ""
+
+    logCleanup:
+      enabled: true
+
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+      retentionMinutes: 21600
+
+      intervalSeconds: 900
+
+    numRuns: -1
+
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 30
+      timeoutSeconds: 60
+      failureThreshold: 5
+
+      taskCreationCheck:
+        enabled: false
+
+        thresholdSeconds: 300
+
+        schedulerAgeBeforeCheck: 180
+
+    extraPipPackages: []
+
+    extraContainers: []
+
+    extraInitContainers: []
+
+    extraVolumeMounts: []
+
+    extraVolumes: []
+
+  web:
+    webserverConfig:
+      enabled: true
+
+      stringOverride: ""
+
+      existingSecret: ""
+
+    replicas: 1
+
+    resources: 
+      requests:
+        memory: "2Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+
+
+    safeToEvict: true
+
+    podDisruptionBudget:
+      enabled: false
+
+      apiVersion: policy/v1
+
+      maxUnavailable: ""
+
+      minAvailable: ""
+
+    service:
+      annotations: {}
+      sessionAffinity: "None"
+      sessionAffinityConfig: {}
+      type: NodePort
+      externalPort: 8080
+      loadBalancerIP: ""
+      loadBalancerSourceRanges: []
+      nodePort:
+        http: ""
+
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+
+
+  workers:
+    enabled: true
+
+    replicas: 1
+
+    resources: 
+      requests:
+        memory: "2Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+
+
+    safeToEvict: true
+
+    podDisruptionBudget:
+      enabled: false
+
+      apiVersion: policy/v1
+
+      maxUnavailable: ""
+
+      minAvailable: ""
+
+    autoscaling:
+      enabled: false
+      maxReplicas: 2
+      metrics: []
+
+      apiVersion: autoscaling/v2
+
+    celery:
+      gracefullTermination: false
+
+      gracefullTerminationPeriod: 600
+
+    terminationPeriod: 60
+
+    logCleanup:
+      enabled: true
+
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+
+      retentionMinutes: 21600
+
+      intervalSeconds: 900
+
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 30
+      timeoutSeconds: 60
+      failureThreshold: 5
+
+
+  triggerer:
+    enabled: true
+
+    replicas: 1
+
+    resources:
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+
+
+    safeToEvict: true
+
+    podDisruptionBudget:
+      enabled: false
+
+      apiVersion: policy/v1
+
+      maxUnavailable: ""
+
+      minAvailable: ""
+
+    capacity: 1000
+
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 30
+      timeoutSeconds: 60
+      failureThreshold: 5
+
+
+  flower:
+    enabled: true
+
+    replicas: 1
+
+    resources: 
+      requests:
+        memory: "1Gi"
+        cpu: "1"
+      limits:
+        memory: "2Gi"
+        cpu: "2"
+
+    safeToEvict: true
+
+    podDisruptionBudget:
+      enabled: false
+
+      apiVersion: policy/v1
+
+      maxUnavailable: ""
+
+      minAvailable: ""
+
+    basicAuthSecret: ""
+
+    basicAuthSecretKey: ""
+
+    service:
+      annotations: {}
+      type: ClusterIP
+      externalPort: 5555
+      loadBalancerIP: ""
+      loadBalancerSourceRanges: []
+      nodePort:
+        http:
+
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+
+    extraPipPackages: []
+
+    extraContainers: []
+
+    extraInitContainers: []
+
+    extraVolumeMounts: []
+
+    extraVolumes: []
+
+  logs:
+    path: /opt/airflow/logs
+
+    persistence:
+      enabled: false
+
+      existingClaim: ""
+
+      subPath: ""
+
+      storageClass: ""
+
+      accessMode: ReadWriteMany
+
+      size: 1Gi
+
+  dags:
+    path: /opt/airflow/dags
+
+    persistence:
+      enabled: false
+
+      existingClaim: ""
+
+      subPath: ""
+
+      storageClass: ""
+
+      accessMode: ReadWriteMany
+
+      size: 1Gi
+
+    gitSync:
+      enabled: true
+
+      image:
+        repository: registry.k8s.io/git-sync/git-sync
+        tag: v3.6.9
+        pullPolicy: IfNotPresent
+        uid: 65533
+        gid: 65533
+
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+      repo: "your-repo-url"
+
+      repoSubPath: ""
+
+      branch: main
+
+      revision: HEAD
+
+      depth: 1
+
+      syncWait: 60
+
+      syncTimeout: 120
+
+      submodules: recursive
+
+      credentialsSecret: rada-airflow-git-credentials 
+      httpSecret: "rada-airflow-git-credentials"
+
+      httpSecretUsernameKey: GIT_SYNC_USERNAME
+
+      httpSecretPasswordKey: GIT_SYNC_PASSWORD
+
+      sshSecret: ""
+
+      sshSecretKey: id_rsa
+
+      sshKnownHosts: ""
+
+      maxFailures: 0
+
+
+  rbac:
+    create: true
+
+    events: true
+
+    secrets: false
+
+  serviceAccount:
+    create: true
+
+    name: ""
+
+    annotations: {}
+
+  extraManifests: []
+
+  pgbouncer:
+    enabled: true
+
+    image:
+      repository: ghcr.io/airflow-helm/pgbouncer
+      tag: 1.22.1-patch.0
+      pullPolicy: IfNotPresent
+      uid: 1001
+      gid: 1001
+
+    resources: 
+      requests:
+        memory: "1Gi"
+        cpu: "0.5"
+      limits:
+        memory: "2Gi"
+        cpu: "1"
+
+    safeToEvict: true
+
+    podDisruptionBudget:
+      enabled: false
+
+      apiVersion: policy/v1
+
+      maxUnavailable:
+
+      minAvailable:
+
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 30
+      timeoutSeconds: 60
+      failureThreshold: 3
+
+    startupProbe:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 15
+      failureThreshold: 30
+
+    terminationGracePeriodSeconds: 120
+
+    authType: md5
+
+    maxClientConnections: 1000
+
+    poolSize: 20
+
+    logDisconnections: 0
+
+    logConnections: 0
+
+    statsUsers: ""
+
+    clientSSL:
+      mode: prefer
+
+      ciphers: normal
+
+      caFile:
+        existingSecret: ""
+        existingSecretKey: root.crt
+
+      keyFile:
+        existingSecret: ""
+        existingSecretKey: client.key
+
+      certFile:
+        existingSecret: ""
+        existingSecretKey: client.crt
+
+    serverSSL:
+      mode: prefer
+
+      ciphers: normal
+
+      caFile:
+        existingSecret: ""
+        existingSecretKey: root.crt
+
+      keyFile:
+        existingSecret: ""
+        existingSecretKey: server.key
+
+      certFile:
+        existingSecret: ""
+        existingSecretKey: server.crt
+
+  postgresql:
+    enabled: true
+
+    image:
+      registry: ghcr.io
+      repository: airflow-helm/postgresql-bitnami
+      tag: 11.22-patch.0
+      pullPolicy: IfNotPresent
+
+    postgresqlDatabase: airflow
+
+    postgresqlUsername: postgres
+
+    postgresqlPassword: airflow
+
+    existingSecret: ""
+
+    existingSecretKey: ""
+
+    persistence:
+      enabled: true
+
+      storageClass: ""
+
+      accessModes:
+        - ReadWriteOnce
+
+      size: 2Gi
+    initdbScripts:
+      create_databases.sql: |
+        CREATE DATABASE nessie
+    master:
+      nodeSelector: {}
+
+      affinity: {}
+
+      tolerations: []
+
+      podAnnotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+
+  externalDatabase:
+    type: postgres
+
+    host: localhost
+
+    port: 5432
+
+    database: airflow
+
+    user: airflow
+
+    userSecret: ""
+
+    userSecretKey: "postgresql-user"
+
+    password: ""
+
+    passwordSecret: ""
+
+    passwordSecretKey: "postgresql-password"
+
+    properties: ""
+
+  redis:
+    enabled: true
+
+    image:
+      registry: docker.io
+      repository: bitnami/redis
+      tag: 6.2.14-debian-12-r17
+      pullPolicy: IfNotPresent
+
+    password: airflow
+
+    existingSecret: ""
+
+    existingSecretPasswordKey: "redis-password"
+
+    cluster:
+      enabled: false
+
+      slaveCount: 1
+
+    master:
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+
+      nodeSelector: {}
+
+      affinity: {}
+
+      tolerations: []
+
+      podAnnotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+
+      persistence:
+        enabled: false
+
+        storageClass: ""
+
+        accessModes:
+          - ReadWriteOnce
+
+        size: 2Gi
+
+    slave:
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+
+      nodeSelector: {}
+
+      affinity: {}
+
+      tolerations: []
+
+      podAnnotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+
+      persistence:
+        enabled: false
+
+        storageClass: ""
+
+        accessModes:
+          - ReadWriteOnce
+        size: 2Gi
+    interval: "30s"
+  externalRedis:
+    host: localhost
+
+    port: 6379
+
+    databaseNumber: 1
+
+    password: ""
+
+    passwordSecret: ""
+
+    passwordSecretKey: "redis-password"
+
+    properties: ""
+  serviceMonitor:
+    enabled: true
+
+    selector:
+      prometheus: kube-prometheus
+
+    path: admin/metrics
+
+    interval: "30s"
+
+  prometheusRule:
+    enabled: false
+
+    additionalLabels: {}
+
+    groups: []
+
+
+secret:
+  enabled: true
+
+  gitSync:
+    enabled: true
+    username: your-username
+    password: your-password
+
+  postgresql:
+    username: postgres
+    password: airflow
+
+  awscreds:
+    awsAccessKeyId: your-aws-access-key
+    awsSecretAccessKey: your-aws-secret-access-key
+  
