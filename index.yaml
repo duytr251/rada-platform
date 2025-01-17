@@ -1,0 +1,30 @@
+apiVersion: v1
+entries:
+  rada-platform:
+  - apiVersion: v2
+    appVersion: 1.16.0
+    created: "2025-01-17T11:19:52.7249286+07:00"
+    dependencies:
+    - alias: nessie
+      enabled: true
+      name: nessie
+      repository: https://charts.projectnessie.org
+      version: 0.92.1
+    - alias: trino
+      enabled: true
+      name: trino
+      repository: https://trinodb.github.io/charts
+      version: 0.25.0
+    - alias: airflow
+      enabled: true
+      name: airflow
+      repository: https://airflow-helm.github.io/charts
+      version: 8.9.0
+    description: A Helm chart for Kubernetes
+    digest: f7c85afafa266737d6e5340fbfa5e9ace756463136d6fa0a361ae10c9d6dde08
+    name: rada-platform
+    type: application
+    urls:
+    - https://duytr251.github.io/rada-platform/rada-platform-0.1.0.tgz
+    version: 0.1.0
+generated: "2025-01-17T11:19:52.7156945+07:00"
